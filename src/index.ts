@@ -108,7 +108,7 @@ export function registerScrollSpy(
 
   /** Initializing Scroll Sections */
   function initScrollSections(
-    el: Element,
+    el: any,
     sectionSelector: string | null | undefined
   ) {
     const id = scrollSpyId(el)
@@ -129,7 +129,7 @@ export function registerScrollSpy(
 
   /** Fetch elements from a container or base on a selector */
   function findElements(
-    container: Element,
+    container: HTMLElement,
     selector: string | null | undefined
   ) {
     if (!selector) {
