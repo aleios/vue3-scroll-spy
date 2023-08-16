@@ -1,5 +1,5 @@
 {
-  "name": "vue3-scroll-spy",
+  "name": "@aleios10/vue3-scroll-spy",
   "version": "1.0.9",
   "type": "module",
   "description": "Updated build of scroll-spy for vue 3.",
