@@ -10,6 +10,7 @@ export type LinkOptions = {
 export type DefaultOptions = {
   allowNoActive: boolean
   sectionSelector: string | null
+  data: string | null
   offset: number
   time: number
   steps: 30

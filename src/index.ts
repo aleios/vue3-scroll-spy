@@ -1,8 +1,7 @@
+import { App, DirectiveBinding } from 'vue'
 import { DefaultOptions, ScrollSpyElement } from './typings'
-import { DirectiveBinding } from 'vue'
-import { getOffsetTop, scrollSpyId, scrollSpyIdFromAncestors } from './utils'
+import { scrollSpyId, getOffsetTop, scrollSpyIdFromAncestors } from './utils'
 import { scrollWithAnimation, Easing } from './animate'
-import { App } from 'vue'
 
 const defaults: DefaultOptions = {
   /**
@@ -13,6 +12,8 @@ const defaults: DefaultOptions = {
   allowNoActive: false,
   /** The scrollable container */
   sectionSelector: null,
+  /** Tracking value for index **/
+  data: null,
   /** Scroll offset from top */
   offset: 0,
   /** Animation timing */
@@ -32,11 +33,10 @@ const defaults: DefaultOptions = {
   }
 }
 
-const registerScrollSpy = (
+export function registerScrollSpy(
   app: App,
   options?: { [key: string]: any }
-): void => {
-  /** Directive options */
+): void {
   const defaultOptions = Object.assign({}, defaults, options || {})
 
   /**
@@ -65,12 +65,180 @@ const registerScrollSpy = (
     }
   })
 
+  /** Data variables **/
   const scrollSpyContext = '@@scrollSpyContext'
   const scrollSpyElements: { [key: string]: ScrollSpyElement } = {}
   const scrollSpySections: { [key: string]: HTMLCollection | Element[] } = {}
   const activeElement: { [key: string]: ScrollSpyElement } = {}
   const canActiveElements: { [key: string]: ScrollSpyElement[] } = {}
   const currentIndex: { [key: string]: number | null } = {}
+
+  const activeOpts = {
+    selector: defaultOptions.active.selector,
+    class: defaultOptions.active.class
+  }
+
+  /** Generating elements that can apply active classes */
+  function scrollSpyActive(
+    el: ScrollSpyElement,
+    binding: DirectiveBinding
+  ): void {
+    const id = scrollSpyId(el)
+
+    activeOpts.selector =
+      binding.value && binding.value.selector
+        ? binding.value.selector
+        : defaultOptions.active.selector
+
+    activeOpts.class =
+      binding.value && binding.value.class
+        ? binding.value.class
+        : defaultOptions.active.class
+
+    const activeOptions = Object.assign({}, defaultOptions, {
+      active: activeOpts
+    })
+
+    const arr = [...findElements(el, activeOptions.active.selector)]
+    canActiveElements[id] = arr.map((el: ScrollSpyElement) => {
+      el[scrollSpyContext].options = activeOptions
+      return el
+    })
+  }
+
+  /** Initializing Scroll Sections */
+  function initScrollSections(
+    el: Element,
+    sectionSelector: string | null | undefined
+  ) {
+    const id = scrollSpyId(el)
+    const scrollSpyContextEl = el[scrollSpyContext]
+    const idScrollSections = findElements(el, sectionSelector)
+    scrollSpySections[id] = idScrollSections
+
+    // Binding eventEl and scrollEl on first element of a section
+    if (
+      idScrollSections[0] &&
+      idScrollSections[0] instanceof HTMLElement &&
+      idScrollSections[0].offsetParent !== el
+    ) {
+      scrollSpyContextEl.eventEl = window
+      scrollSpyContextEl.scrollEl = bodyScrollEl
+    }
+  }
+
+  /** Fetch elements from a container or base on a selector */
+  function findElements(
+    container: Element,
+    selector: string | null | undefined
+  ) {
+    if (!selector) {
+      return [...container.children].map((el) => {
+        return initScrollSpyElement(el)
+      })
+    }
+
+    const id = scrollSpyId(container)
+
+    const elements = []
+
+    for (const el of container.querySelectorAll(selector)) {
+      // Filter out elements that are owned by another directive
+      if (scrollSpyIdFromAncestors(el) === id) {
+        elements.push(initScrollSpyElement(el))
+      }
+    }
+
+    return elements
+  }
+
+  function initScrollSpyElement(el: Element): ScrollSpyElement {
+    const onScroll = () => {
+      return
+    }
+
+    el[scrollSpyContext] = {
+      onScroll,
+      options: { ...defaultOptions, active: activeOpts },
+      id: '',
+      eventEl: el,
+      scrollEl: el
+    }
+    return <ScrollSpyElement>el
+  }
+
+  function scrollLinkClickHandler(
+    index: number,
+    scrollSpyId: string,
+    event: any
+  ) {
+    event.preventDefault()
+    scrollTo(scrollSpyElements[scrollSpyId], index)
+  }
+
+  function initScrollLink(el: HTMLElement, selector: string) {
+    const id = scrollSpyId(el)
+
+    const linkElements = findElements(el, selector)
+
+    for (let i = 0; i < linkElements.length; i++) {
+      const linkElement = linkElements[i]
+
+      const listener = scrollLinkClickHandler.bind(null, i, id)
+
+      if (!linkElement[scrollSpyContext].click) {
+        linkElement.addEventListener('click', listener)
+        linkElement[scrollSpyContext].click = listener
+      }
+    }
+  }
+
+  function scrollTo(el: Element, index: number) {
+    const id = scrollSpyId(el)
+    const idScrollSections = scrollSpySections[id]
+
+    const { scrollEl, options } = el[scrollSpyContext]
+    const current = scrollEl.scrollTop
+
+    if (idScrollSections[index]) {
+      const target = getOffsetTop(idScrollSections[index]) - options.offset
+      if (options.easing) {
+        scrollWithAnimation(
+          scrollEl,
+          current,
+          target,
+          options.time,
+          options.easing
+        )
+        return
+      }
+
+      const ua = window.navigator.userAgent
+      const msie = ua.indexOf('MSIE ')
+
+      // If current browser is internet explorer.
+      if (msie > 0) {
+        const time = options.time
+        const steps = options.steps
+        const timeMs = parseInt(time) / parseInt(steps)
+        const gap = target - current
+        for (let i = 0; i <= steps; i++) {
+          const pos = current + (gap / steps) * i
+          setTimeout(() => {
+            scrollEl.scrollTop = pos
+          }, timeMs * i)
+        }
+        return
+      }
+
+      // Use window.scrollTo instead of moving by steps.
+      // Beware Internet Explorer does not support this.
+      window.scrollTo({
+        top: target,
+        behavior: 'smooth'
+      })
+    }
+  }
 
   app.directive('scroll-spy', {
     created(el, binding) {
@@ -146,6 +314,13 @@ const registerScrollSpy = (
               )
             }
           }
+
+          if (options.data && binding?.instance) {
+            const dataVal = binding.instance[options.data]
+            if (dataVal !== null && dataVal !== undefined) {
+              binding.instance[options.data] = index
+            }
+          }
         }
       }
 
@@ -190,12 +365,20 @@ const registerScrollSpy = (
     unmounted(el) {
       const { eventEl, onScroll } = el[scrollSpyContext]
       eventEl.removeEventListener('scroll', onScroll)
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getSSRProps(binding, vnode) {
+      return {}
     }
   })
 
   app.directive('scroll-spy-active', {
     created: scrollSpyActive,
-    updated: scrollSpyActive
+    updated: scrollSpyActive,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getSSRProps(binding, vnode) {
+      return {}
+    }
   })
 
   app.directive('scroll-spy-link', {
@@ -220,163 +403,12 @@ const registerScrollSpy = (
           delete linkElement[scrollSpyContext]['click']
         }
       }
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getSSRProps(binding, vnode) {
+      return {}
     }
   })
-
-  function scrollLinkClickHandler(index: any, scrollSpyId: any, event: any) {
-    event.preventDefault()
-    scrollTo(scrollSpyElements[scrollSpyId], index)
-  }
-
-  function initScrollLink(el: any, selector: string) {
-    const id = scrollSpyId(el)
-
-    const linkElements = findElements(el, selector)
-
-    for (let i = 0; i < linkElements.length; i++) {
-      const linkElement = linkElements[i]
-
-      const listener = scrollLinkClickHandler.bind(null, i, id)
-
-      if (!linkElement[scrollSpyContext].click) {
-        linkElement.addEventListener('click', listener)
-        linkElement[scrollSpyContext].click = listener
-      }
-    }
-  }
-
-  function scrollTo(el: any, index: number) {
-    const id = scrollSpyId(el)
-    const idScrollSections = scrollSpySections[id]
-
-    const { scrollEl, options } = el[scrollSpyContext]
-    const current = scrollEl.scrollTop
-
-    if (idScrollSections[index]) {
-      const target = getOffsetTop(idScrollSections[index]) - options.offset
-      if (options.easing) {
-        scrollWithAnimation(
-          scrollEl,
-          current,
-          target,
-          options.time,
-          options.easing
-        )
-        return
-      }
-
-      const ua = window.navigator.userAgent
-      const msie = ua.indexOf('MSIE ')
-
-      // If current browser is internet explorer.
-      if (msie > 0) {
-        const time = options.time
-        const steps = options.steps
-        const timeMs = parseInt(time) / parseInt(steps)
-        const gap = target - current
-        for (let i = 0; i <= steps; i++) {
-          const pos = current + (gap / steps) * i
-          setTimeout(() => {
-            scrollEl.scrollTop = pos
-          }, timeMs * i)
-        }
-        return
-      }
-
-      // Use window.scrollTo instead of moving by steps.
-      // Beware Internet Explorer does not support this.
-      window.scrollTo({
-        top: target,
-        behavior: 'smooth'
-      })
-    }
-  }
-
-  /** Generating elements that can apply active classes */
-  function scrollSpyActive(
-    el: ScrollSpyElement,
-    binding: DirectiveBinding
-  ): void {
-    const id = scrollSpyId(el)
-    const activeOptions = Object.assign({}, defaultOptions, {
-      active: {
-        selector:
-          binding.value && binding.value.selector
-            ? binding.value.selector
-            : defaultOptions.active.selector,
-        class:
-          binding.value && binding.value.class
-            ? binding.value.class
-            : defaultOptions.active.class
-      }
-    })
-    const arr = [...findElements(el, activeOptions.active.selector)]
-
-    canActiveElements[id] = arr.map((el: ScrollSpyElement) => {
-      el[scrollSpyContext].options = activeOptions
-      return el
-    })
-  }
-
-  /** Initializing Scroll Sections */
-  function initScrollSections(
-    el: any,
-    sectionSelector: string | null | undefined
-  ) {
-    const id = scrollSpyId(el)
-    const scrollSpyContextEl = el[scrollSpyContext]
-    const idScrollSections = findElements(el, sectionSelector)
-    scrollSpySections[id] = idScrollSections
-
-    // Binding eventEl and scrollEl on first element of a section
-    if (
-      idScrollSections[0] &&
-      idScrollSections[0] instanceof HTMLElement &&
-      idScrollSections[0].offsetParent !== el
-    ) {
-      scrollSpyContextEl.eventEl = window
-      scrollSpyContextEl.scrollEl = bodyScrollEl
-    }
-  }
-
-  /** Fetch elements from a container or base on a selector */
-  function findElements(
-    container: HTMLElement,
-    selector: string | null | undefined
-  ) {
-    if (!selector) {
-      return [...container.children].map((el) => {
-        return initScrollSpyElement(el)
-      })
-    }
-
-    const id = scrollSpyId(container)
-
-    const elements = []
-
-    for (const el of container.querySelectorAll(selector)) {
-      // Filter out elements that are owned by another directive
-      if (scrollSpyIdFromAncestors(el) === id) {
-        elements.push(initScrollSpyElement(el))
-      }
-    }
-
-    return elements
-  }
-
-  function initScrollSpyElement(el: any): ScrollSpyElement {
-    const onScroll = () => {
-      return
-    }
-    el[scrollSpyContext] = {
-      onScroll,
-      options: defaultOptions,
-      id: '',
-      eventEl: el,
-      scrollEl: el
-    }
-    return el
-  }
 }
 
-export { Easing, registerScrollSpy }
+export { Easing }

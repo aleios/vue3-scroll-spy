@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9 (August 16, 2023)
+
+- Swapped from webpack to vite
+- Added data option to v-scroll-spy ported from vue 2 version
+- v-scroll-spy-active changes state to try solve precendence issues.
+
 ## 1.0.6 (March 20, 2021)
 
 - Added scrolling to target by using `window.scrollTo()`, it is smoother for most browsers, but not support IE.

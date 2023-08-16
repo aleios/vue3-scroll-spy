@@ -1,6 +1,7 @@
 <template>
   <div class="container">
     <div class="sidebar">
+      <p>Current Section: {{ currentSection }}</p>
       <ul
         class="menu"
         v-scroll-spy-active="{ class: 'customActive' }"
@@ -15,7 +16,7 @@
       <h1>Vue3 Scroll Spy Demo</h1>
     </div>
 
-    <div class="main" v-scroll-spy>
+    <div class="main" v-scroll-spy="{data: 'currentSection'}">
       <div>
         <h1>Ludwig van Beethoven</h1>
         <p>
@@ -183,6 +184,11 @@ export default defineComponent({
     ]
 
     return { titles }
+  },
+  data: () => {
+    return {
+      currentSection: 0
+    }
   }
 })
 </script>
